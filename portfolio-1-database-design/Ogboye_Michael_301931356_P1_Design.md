@@ -1,69 +1,48 @@
 Upperlink LaunchPad Database Design
 
-1. Entities
-The database keeps records of four main entities:
+### Entities
 
-* Department: The specific company divisions where interns are assigned.
-* Intern: The trainees using the system.
-* Course: The training modules available in the system catalog.
-* Enrollment: The individual records tracking an intern's participation and progress in a specific course.
+I chose four entities for my internal learning management system:
 
-2. Attributes and keys
+| Entity | Information stored |
+| --- | --- |
+| department | A company division |
+| intern | A trainee registered in the system |
+| course | A training module in the catalog |
+| enrollment | One record of an intern taking a specific course |
 
-* Department
-* department_id (Primary Key, integer, required)
-* department_name (varchar, required, unique)
+I kept intern and enrollment separate. For example, the system might offer a React Basics course. I record the intern details once, and use the enrollment record to track when that intern takes a specific course.
 
+### Attributes and keys
 
-* Intern
-* intern_id (Primary Key, integer, required)
-* first_name (varchar, required)
-* last_name (varchar, required)
-* department_id (Foreign Key, integer, required)
+I use an automatically generated ID for each record. In the tables below, unique means no repeated values. Required means the value cannot be `NULL` (missing); checking for blank text is a separate rule.
 
+| Entity | Attributes and proposed PostgreSQL types | Keys and required values |
+| --- | --- | --- |
+| department | department_id BIGINT; department_name VARCHAR(100) | PK: department_id. Unique: department_name. All required. |
+| intern | intern_id BIGINT; first_name VARCHAR(100); last_name VARCHAR(100); department_id BIGINT | PK: intern_id. FK: department_id ➔ department.department_id. All required. |
+| course | course_id BIGINT; course_name VARCHAR(150); capacity INTEGER | PK: course_id. Unique: course_name. All required. |
+| enrollment | enrollment_id BIGINT; intern_id BIGINT; course_id BIGINT; status VARCHAR(20) | PK: enrollment_id. FKs: intern_id ➔ intern.intern_id; course_id ➔ course.course_id. All required. |
 
-* Course
-* course_id (Primary Key, integer, required)
-* course_name (varchar, required, unique)
-* capacity (integer, required)
+`BIGINT` holds whole numbers, such as IDs. `VARCHAR(150)` holds text up to 150 characters. `INTEGER` holds whole numbers for course capacities.
 
+Design assumption: Interns remain in a single department for the duration of their placement, so I store department_id directly in the intern table rather than creating a separate placement history table.
 
-* Enrollment
-* enrollment_id (Primary Key, integer, required)
-* intern_id (Foreign Key, integer, required)
-* course_id (Foreign Key, integer, required)
-* status (varchar, required)
+### Relationships
 
+| Tables linked | Relationship | Meaning |
+| --- | --- | --- |
+| department ➔ intern | One to many | A department can have zero or more interns; each intern belongs to exactly one department. |
+| intern ➔ enrollment | One to many | An intern can have zero or more enrollments; each enrollment belongs to exactly one intern. |
+| course ➔ enrollment | One to many | A course can have zero or more enrollments; each enrollment refers to exactly one course. |
 
+For example, intern 5 can take a UI/UX course in January and a React course in February. I keep both enrollment records. The enrollment table resolves the many-to-many relationship between interns and courses; a foreign key links the records.
 
-3. Relationships
+### Business rules and constraints
 
-* Department and Intern: A one-to-many relationship. A department can have zero or many interns assigned to it. Each intern belongs to exactly one department.
-* Intern and Enrollment: A one-to-many relationship. An intern can have zero or many course enrollments. Each enrollment belongs to exactly one intern.
-* Course and Enrollment: A one-to-many relationship. A course can have zero or many enrollments. Each enrollment belongs to exactly one course.
+* **Rule 1:** An intern cannot have duplicate enrollments for the exact same course. The design uses a unique index on the combination of `intern_id` and `course_id`.
+* **Rule 2:** A course cannot accept new enrollments once its defined capacity limit is reached. This rule needs transaction logic or a trigger to count existing enrollments before inserting, not just a static key.
+* **Rule 3:** Required foreign keys link each enrollment to an existing intern and course.
+* **Rule 4:** A check constraint on the `status` column ensures it only accepts 'Enrolled', 'In Progress', or 'Completed'.
 
-The Enrollment entity acts as a linking table (also known as an associative entity). It connects the Intern and Course tables, resolving what is naturally a many-to-many relationship (since one intern takes many courses, and one course holds many interns) into two one-to-many relationships.
-
-4. Business rules and constraints
-
-* Rule 1: An intern can enroll in multiple courses but cannot have duplicate active enrollments for the exact same course.
-* Check/Operation: A UNIQUE constraint applied to the combination of the intern_id and course_id columns in the Enrollment table ensures the database rejects duplicate pairings.
-
-
-* Rule 2: A course cannot accept new intern enrollments once its defined capacity limit is reached.
-* Check/Operation: A basic table key cannot enforce this rule. It requires a database trigger (a script that runs automatically before a change) or an application-level check. Before a new enrollment is saved, the system must count the existing enrollments for that course_id and compare it to the capacity field in the Course table. For example, if a React Basics course has a capacity of 15, the system blocks the 16th registration.
-
-
-* Rule 3: Every enrollment record must be linked to a valid, existing InternID and CourseID.
-* Check/Operation: Foreign Key constraints on the intern_id and course_id columns in the Enrollment table enforce this. This creates referential integrity, meaning the database prevents the creation of an enrollment if the intern or course does not actually exist.
-
-
-* Rule 4: An enrollment status must strictly be categorized as 'Enrolled', 'In Progress', or 'Completed'.
-* Check/Operation: A CHECK constraint on the status column in the Enrollment table ensures that only these three specific text values are accepted.
-
-
-
-5. Design assumptions
-
-* I chose not to add a "current_enrolled_count" column to the Course table. This number can be calculated at any time by counting the rows in the Enrollment table. Storing calculated values often leads to data inconsistencies if the total fails to update when an enrollment changes.
-* I assume interns remain in a single department for the duration of their temporary placement, so historical tracking of department transfers is unnecessary for this scope.
+Course vacancy is calculated when needed. An enrollment count is compared against the capacity field, so the design has no separate "total_enrolled" field to prevent data inconsistency.
