@@ -1,3 +1,6 @@
+# Upperlink LaunchPad ER Diagram
+
+```mermaid
 erDiagram
     direction LR
 
@@ -29,3 +32,4 @@ erDiagram
     department ||--o{ intern : "has"
     intern ||--o{ enrollment : "has"
     course ||--o{ enrollment : "receives"
+    
